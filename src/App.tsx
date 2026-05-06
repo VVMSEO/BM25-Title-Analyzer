@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { CheckCircle2, AlertCircle, XCircle, Info, ArrowRight, LayoutDashboard } from 'lucide-react';
+import { CheckCircle2, AlertCircle, XCircle, Info, ArrowRight, LayoutDashboard, Sparkles } from 'lucide-react';
 
 // Базовый список стоп-слов (предлоги, союзы, частицы)
 const STOP_WORDS = new Set([
@@ -34,6 +34,7 @@ const DEFAULT_TITLE = "Детские дубленки для девочек —
 export default function App() {
   const [keywordsInput, setKeywordsInput] = useState(DEFAULT_KEYWORDS);
   const [titleInput, setTitleInput] = useState(DEFAULT_TITLE);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   // Анализ семантического ядра
   const coreAnalysis = useMemo(() => {
@@ -172,6 +173,52 @@ export default function App() {
     };
   }, [titleInput, coreAnalysis]);
 
+  const handleGenerateAI = async () => {
+    setIsGenerating(true);
+    try {
+      // Ключ берется из переменных окружения, либо используется предоставленный в запросе
+      const apiKey = import.meta.env.VITE_ROUTERAI_API_KEY || "sk-idWLIk8WBHJJiwn-Y2oyMNdW0ckjsfIa";
+      
+      const reqBody = {
+        model: "anthropic/claude-sonnet-4.6",
+        messages: [
+          {
+            role: "system",
+            content: "Ты — эксперт по SEO текстовому ранжированию. Твоя задача — составить идеальный Title на основе семантического ядра. Правила: 1) Включи максимальное число значимых корней (максимизируй кворум). 2) Сохраняй прямой порядок самых частых биграмм. 3) Длина строго не более 12 значимых слов. 4) НЕ используй слова, которых нет в семантике (они снижают BM25 вес). 5) Призыв к действию и читабельность должна быть естественной. Ответь ТОЛЬКО готовым текстом Title, без кавычек и дополнительных слов."
+          },
+          {
+            role: "user",
+            content: `Вот моё семантическое ядро (список запросов):\n${keywordsInput}`
+          }
+        ]
+      };
+
+      const response = await fetch("https://routerai.ru/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          // В зависимости от прокси может требоваться Bearer, но оставляю возможность работы и с сырым ключом
+          "Authorization": apiKey.startsWith("sk-") ? `Bearer ${apiKey}` : apiKey
+        },
+        body: JSON.stringify(reqBody)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Ошибка API: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      if (data.choices?.[0]?.message?.content) {
+        setTitleInput(data.choices[0].message.content.trim().replace(/^['"-]+|['"-]+$/g, ''));
+      }
+    } catch (e) {
+      console.error("Ошибка при генерации AI:", e);
+      alert("Не удалось сгенерировать Title. Проверьте консоль для деталей.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900 font-sans selection:bg-indigo-100">
       {/* Header */}
@@ -217,6 +264,14 @@ export default function App() {
                 <label className="block text-sm font-semibold text-neutral-900">
                   Анализируемый Title
                 </label>
+                <button
+                  onClick={handleGenerateAI}
+                  disabled={isGenerating || !keywordsInput.trim()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors rounded-lg text-xs font-semibold"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  {isGenerating ? "Генерация..." : "Умная генерация"}
+                </button>
               </div>
               
               <div className="mb-4">
